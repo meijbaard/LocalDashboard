@@ -1,73 +1,46 @@
-CBS Buurtdata Viewer
+# 🗺️ Wijkdata Dashboard Gemeente Baarn
 
-Dit project is een eenvoudige, opzichzelfstaande webpagina die kerncijfers voor de buurten van de gemeente Baarn ophaalt en weergeeft. De data wordt live opgehaald van de CBS Open Data API.
+Dit project is een interactief dashboard dat wijk- en buurtgegevens voor de gemeente Baarn visualiseert op een kaart. Gebruikers kunnen op specifieke wijken klikken om gedetailleerde demografische en statistische informatie te bekijken.
 
-De pagina is ontworpen om beleidsmedewerkers en andere geïnteresseerden snel inzicht te geven in relevante data voor de thema's:
+![Schermafbeelding van het Baarn Dashboard](https://placehold.co/800x500/f0f2f5/333?text=Voorbeeld+van+de+Kaart)
 
-    Werk & Inkomen
+## ✨ Kenmerken
 
-    Openbare Ruimte
+-   **🗺️ Interactieve Kaart**: Een dynamische kaart van Baarn waarop alle wijken en buurten duidelijk zijn aangegeven.
+-   **📊 Data Popups**: Door op een wijk te klikken, verschijnt er een popup met overzichtelijke data over die specifieke locatie.
+-   **☁️ Dynamische Data**: De geografische en statistische data wordt live geladen vanuit een extern GeoJSON-bestand.
+-   **🗑️ Gefilterde Weergave**: Alleen relevante data wordt getoond. Velden met ongeldige waarden (`-99995` of `-99997`) worden automatisch verborgen.
+-   **📱 Responsive Design**: De webpagina is geoptimaliseerd voor weergave op zowel desktops als mobiele apparaten.
 
-    Afval / Circulaire Economie (contextuele data)
+## 💾 Data Bron
 
-Kenmerken
+De data voor dit dashboard wordt geladen vanuit het volgende GeoJSON-bestand:
+-   **URL**: [`baarn_buurten.geojson`](https://raw.githubusercontent.com/meijbaard/LocalDashboard/main/baarn_buurten.geojson)
 
-    Dynamische Data: Haalt de meest recente kerncijfers (momenteel 2023) direct van het CBS.
+Dit bestand bevat zowel de geometrische data (de grenzen van de wijken) als de eigenschappen (de statistische gegevens) per wijk.
 
-    Geen Backend Nodig: Alles draait volledig in de browser (client-side).
+## 🛠️ Gebruikte Technologieën
 
-    Gericht op Eén Gemeente: De code is specifiek ingesteld voor de gemeente Baarn (GM0308).
+-   **HTML5**: Voor de basisstructuur van de webpagina.
+-   **Tailwind CSS**: Voor een moderne en responsive styling.
+-   **Leaflet.js**: Een open-source JavaScript-bibliotheek voor interactieve kaarten.
+-   **JavaScript**: Voor het laden van de data en het toevoegen van interactiviteit.
 
-    Responsive Design: De weergave past zich aan op verschillende schermformaten (desktop, tablet, mobiel) dankzij Tailwind CSS.
+## 🚀 Hoe te gebruiken
 
-    Eenvoudig Aanpasbaar: Met minimale aanpassingen kan de viewer voor elke Nederlandse gemeente worden gebruikt.
+Om dit project lokaal te bekijken, kunt u de repository clonen en het `index.html`-bestand (of de naam van uw HTML-bestand) direct in uw webbrowser openen. Er is geen webserver of build-proces nodig.
 
-Hoe het Werkt
+```bash
+# Clone de repository
+git clone [https://github.com/meijbaard/LocalDashboard.git](https://github.com/meijbaard/LocalDashboard.git)
 
-De webpagina bestaat uit één enkel index.html bestand. Binnen dit bestand gebeurt het volgende:
+# Navigeer naar de map
+cd LocalDashboard
 
-    Laden: Zodra de pagina laadt, wordt een JavaScript-functie loadAndDisplayData aangeroepen.
+# Open het HTML-bestand in uw browser
 
-    API Aanroep: Het script maakt een OData-API aanroep naar de CBS-tabel 85039NED (Kerncijfers wijken en buurten 2023).
+# 📂 Bestandsstructuur
 
-    Filteren: De API-aanroep filtert de dataset direct op de gemeentecode van Baarn (GM0308) en het jaartal 2023. Hierdoor wordt alleen de relevante data voor de hele gemeente opgehaald.
-
-    Client-side Filtering: De ontvangen data (die zowel de gemeente, wijken als buurten bevat) wordt vervolgens in de browser gefilterd om alleen de records over te houden die van het type Buurt zijn.
-
-    Weergave: De gefilterde buurtdata wordt dynamisch omgezet naar HTML-kaarten en op de pagina weergegeven. Elke kaart toont de naam van de buurt en de geselecteerde kerncijfers.
-
-Gebruikte Technologieën
-
-    HTML5: Voor de basisstructuur van de pagina.
-
-    Tailwind CSS: Voor een snelle en responsive styling.
-
-    JavaScript (ES6): Voor de logica, het ophalen van data (via fetch) en het dynamisch genereren van de content.
-
-    CBS OData API: De bron van alle data.
-
-Installatie en Gebruik
-
-Er is geen installatie nodig. Download het index.html bestand en open het in een moderne web browser zoals Chrome, Firefox, of Edge.
-
-# Kloon de repository (optioneel)
-git clone https://github.com/jouw-gebruikersnaam/cbs-buurtdata-viewer.git
-
-# Open het bestand direct in je browser
-
-Aanpassen voor een Andere Gemeente
-
-Je kunt deze viewer eenvoudig aanpassen om data voor een andere gemeente te tonen:
-
-    Vind de Gemeentecode: Zoek de juiste gemeentecode op. Een lijst is bijvoorbeeld te vinden op deze pagina van het CBS. De code heeft het formaat GMxxxx (bijv. Amsterdam is GM0363).
-
-    Pas de Code Aan: Open het index.html bestand en wijzig de waarde van de MUNICIPALITY_CODE constante in het <script>-gedeelte:
-
-    // --- CONFIGURATION ---
-    const CBS_API_BASE_URL = 'https://opendata.cbs.nl/ODataApi/odata/';
-    const CBS_TABLE_ID = '85039NED';
-    const MUNICIPALITY_CODE = 'GM0363'; // <-- Wijzig deze code (voorbeeld: Amsterdam)
-
-    Sla op en Herlaad: Sla het bestand op en open het opnieuw in je browser. De data voor de nieuwe gemeente wordt nu geladen.
-
-Je kunt desgewenst ook de DATA_MAPPING aanpassen om andere datavelden van het CBS te tonen.
+.
+├── index.html         # Het hoofdbestand van de webpagina
+└── baarn_buurten.geojson # Het databestand met wijkgegevens
