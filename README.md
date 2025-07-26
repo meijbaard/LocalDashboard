@@ -2,8 +2,6 @@
 
 Dit project is een interactief dashboard dat wijk- en buurtgegevens voor de gemeente Baarn visualiseert op een kaart. Gebruikers kunnen op specifieke wijken klikken om gedetailleerde demografische en statistische informatie te bekijken.
 
-![Schermafbeelding van het Baarn Dashboard](https://placehold.co/800x500/f0f2f5/333?text=Voorbeeld+van+de+Kaart)
-
 ## ✨ Kenmerken
 
 -   **🗺️ Interactieve Kaart**: Een dynamische kaart van Baarn waarop alle wijken en buurten duidelijk zijn aangegeven.
