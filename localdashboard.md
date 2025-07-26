@@ -5,7 +5,6 @@ author_profile: false
 permalink: /localdashboard/
 ---
 
-<!DOCTYPE html>
 <html lang="nl">
 <head>
     <meta charset="UTF-8">
@@ -33,6 +32,12 @@ permalink: /localdashboard/
         body {
             font-family: 'Public Sans', sans-serif;
             background-color: #f7f7f7; /* Light grey background */
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        .content-wrapper {
+            flex-grow: 1;
         }
         #map {
             height: 80vh;
@@ -110,7 +115,7 @@ permalink: /localdashboard/
         </div>
     </header>
 
-    <div class="container mx-auto p-4 md:p-8">
+    <div class="container mx-auto p-4 md:p-8 content-wrapper">
         <!-- Page Title -->
         <div class="mb-8 text-left">
             <h2 class="text-3xl md:text-4xl font-bold text-gray-900">Wijkdata Dashboard</h2>
@@ -132,6 +137,10 @@ permalink: /localdashboard/
             </div>
         </main>
     </div>
+
+    <footer class="text-center py-4 text-gray-500 text-sm">
+        <p>Versie 2024.1</p>
+    </footer>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
