@@ -1,0 +1,80 @@
+/* Custom styles inspired by www.baarn.nl */
+:root {
+    --baarn-blue: #004a8f;
+    --baarn-ochre: #fec400;
+}
+body {
+    font-family: 'Public Sans', sans-serif;
+    background-color: #f7f7f7; /* Light grey background */
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+.content-wrapper {
+    flex-grow: 1;
+}
+#map {
+    height: 80vh;
+    width: 100%;
+    border-radius: 0.5rem;
+    z-index: 0;
+    border: 1px solid #ddd;
+}
+.leaflet-container {
+    background: #f7f7f7;
+}
+
+/* Custom popup styling */
+.leaflet-popup-content-wrapper {
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    background-color: #fff;
+}
+.leaflet-popup-content {
+    margin: 1.25rem;
+    font-family: 'Public Sans', sans-serif;
+    line-height: 1.6;
+    width: 300px !important;
+}
+.leaflet-popup-content h3 {
+    margin: 0 0 10px 0;
+    color: var(--baarn-blue);
+    font-weight: 700;
+}
+.leaflet-popup-content h4 {
+    margin: 14px 0 6px 0;
+    color: var(--baarn-blue);
+    font-weight: 700;
+}
+.leaflet-popup-content table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.leaflet-popup-content td {
+    padding: 5px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+.leaflet-popup-content tr:last-child td {
+    border-bottom: none;
+}
+.leaflet-popup-tip-container {
+    width: 40px;
+    height: 20px;
+}
+.leaflet-popup-close-button {
+    padding: 8px 8px 0 0 !important;
+    color: #6b7280;
+}
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: rgba(247, 247, 247, 0.8);
+    z-index: 1000;
+    border-radius: 0.5rem;
+}
