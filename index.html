@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lokale & CBS Dashboard — Baarn</title>
+  <meta name="description" content="Interactieve kaart met Baarn-buurten en lokale/CBS data." />
+
+  <!-- Basale, strikte CSP die je huidige setup toelaat (Leaflet + GitHub raw) -->
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    base-uri 'self';
+    frame-ancestors 'none';
+    img-src 'self' data: https://*.tile.openstreetmap.org;
+    style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com;
+    font-src 'self' https://fonts.gstatic.com data:;
+    script-src 'self' https://unpkg.com;
+    connect-src 'self' https://raw.githubusercontent.com;
+  ">
+
+  <!-- Fonts (optioneel, jouw CSS gebruikt 'Public Sans') -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <!-- Jouw styles -->
+  <link rel="stylesheet" href="./assets/css/localdashboard.css" />
+</head>
+<body>
+  <header class="hero">
+    <div class="container">
+      <h1>Lokale & CBS Dashboard</h1>
+      <p>Interactieve kaart van Baarn met buurtgrenzen en (toekomstig) statistieken.</p>
+    </div>
+  </header>
+
+  <main class="content-wrapper">
+    <!-- Loading overlay die je JS laat zien/verbergen -->
+    <div id="loading-indicator" class="loading-indicator" style="display:none;">
+      <div class="spinner"></div>
+      <p>Data laden...</p>
+    </div>
+
+    <section class="container">
+      <div class="map-card">
+        <div id="map" class="map"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>© 2025 Mark Eijbaard — Data uit GitHub / OSM</p>
+    </div>
+  </footer>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Jouw script (verwacht #map en #loading-indicator) -->
+  <script src="./assets/js/localdashboard.js" defer></script>
+</body>
+</html>
