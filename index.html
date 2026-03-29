@@ -3,64 +3,231 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Lokale & CBS Dashboard — Baarn</title>
-  <meta name="description" content="Interactieve kaart met Baarn-buurten en lokale/CBS data." />
+  <title>Sociaal Dashboard Baarn</title>
+  <meta name="description" content="Interactief sociaal dashboard met CBS-kerncijfers per buurt in Baarn." />
 
-  <!-- Basale, strikte CSP die je huidige setup toelaat (Leaflet + GitHub raw) -->
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';
     base-uri 'self';
     frame-ancestors 'none';
     img-src 'self' data: https://*.tile.openstreetmap.org;
-    style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com;
+    style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.tailwindcss.com https://fonts.googleapis.com;
     font-src 'self' https://fonts.gstatic.com data:;
-    script-src 'self' https://unpkg.com;
+    script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.tailwindcss.com https://cdn.jsdelivr.net;
     connect-src 'self' https://raw.githubusercontent.com;
   ">
 
-  <!-- Fonts (optioneel, jouw CSS gebruikt 'Public Sans') -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
-
-  <!-- Leaflet CSS -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-
-  <!-- Jouw styles -->
   <link rel="stylesheet" href="./assets/css/localdashboard.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <script>
+    // Tailwind CDN configuratie
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            baarn: { 900: '#003872', 800: '#004a8f', 700: '#0057ad', 100: '#dce8f8' },
+            goud: { DEFAULT: '#fec400', dark: '#c99d00' },
+          },
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+        }
+      }
+    }
+  </script>
 </head>
-<body>
-  <header class="hero">
-    <div class="container">
-      <h1>Lokale & CBS Dashboard</h1>
-      <p>Interactieve kaart van Baarn met buurtgrenzen en (toekomstig) statistieken.</p>
+<body class="bg-slate-100 font-sans text-slate-800 flex flex-col h-screen overflow-hidden">
+
+  <!-- ===== HEADER ===== -->
+  <header class="bg-baarn-900 text-white shadow-md z-10 flex-shrink-0">
+    <div class="flex items-center gap-4 px-4 py-3">
+
+      <div class="flex-shrink-0">
+        <h1 class="text-lg font-bold leading-tight">Sociaal Dashboard Baarn</h1>
+        <p class="text-baarn-100 text-xs mt-0.5">
+          CBS-kerncijfers per buurt &bull; <span id="data-jaar-label">laden…</span>
+        </p>
+      </div>
+
+      <div class="ml-auto flex flex-wrap items-center gap-3">
+        <!-- Indicator-keuze -->
+        <div class="flex items-center gap-2">
+          <label for="indicator-select" class="text-xs text-baarn-100 whitespace-nowrap">Indicator</label>
+          <select id="indicator-select"
+            class="bg-baarn-800 border border-baarn-700 text-white text-sm rounded-md px-3 py-1.5
+                   focus:outline-none focus:ring-2 focus:ring-goud cursor-pointer">
+          </select>
+        </div>
+
+        <!-- Jaar-keuze -->
+        <div class="flex items-center gap-2">
+          <label for="jaar-select" class="text-xs text-baarn-100 whitespace-nowrap">Jaar</label>
+          <select id="jaar-select"
+            class="bg-baarn-800 border border-baarn-700 text-white text-sm rounded-md px-3 py-1.5
+                   focus:outline-none focus:ring-2 focus:ring-goud cursor-pointer">
+          </select>
+        </div>
+      </div>
+
     </div>
   </header>
 
-  <main class="content-wrapper">
-    <!-- Loading overlay die je JS laat zien/verbergen -->
-    <div id="loading-indicator" class="loading-indicator" style="display:none;">
-      <div class="spinner"></div>
-      <p>Data laden...</p>
+  <!-- ===== LAAD-INDICATOR ===== -->
+  <div id="laad-overlay" class="fixed inset-0 bg-white/80 z-50 flex flex-col items-center justify-center gap-4">
+    <div class="w-10 h-10 border-4 border-baarn-800 border-t-goud rounded-full animate-spin"></div>
+    <p class="text-baarn-800 font-medium">Dashboard laden…</p>
+  </div>
+
+  <!-- ===== FOUTMELDING ===== -->
+  <div id="fout-melding" class="hidden fixed inset-0 bg-white z-50 flex flex-col items-center justify-center gap-4 p-8 text-center">
+    <svg class="w-12 h-12 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+    </svg>
+    <h2 class="text-xl font-bold text-slate-800">Gegevens niet beschikbaar</h2>
+    <p id="fout-tekst" class="text-slate-500 max-w-md text-sm"></p>
+  </div>
+
+  <!-- ===== HOOFD-LAYOUT ===== -->
+  <main class="flex flex-1 overflow-hidden">
+
+    <!-- === ZIJPANEEL === -->
+    <aside id="zijpaneel"
+      class="w-80 xl:w-96 bg-white border-r border-slate-200 flex flex-col overflow-hidden flex-shrink-0 shadow-sm">
+
+      <!-- Welkomst-staat (geen buurt geselecteerd) -->
+      <div id="welkomst-staat" class="flex flex-col items-center justify-center flex-1 p-8 text-center gap-4">
+        <div class="w-16 h-16 rounded-full bg-baarn-100 flex items-center justify-center">
+          <svg class="w-8 h-8 text-baarn-800" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                  d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+          </svg>
+        </div>
+        <div>
+          <h2 class="font-semibold text-slate-700">Klik op een buurt</h2>
+          <p class="text-slate-400 text-sm mt-1">
+            Selecteer een buurt op de kaart om de cijfers en trends te bekijken.
+          </p>
+        </div>
+      </div>
+
+      <!-- Buurt-staat (gevuld via JS) -->
+      <div id="buurt-staat" class="hidden flex-col flex-1 overflow-hidden">
+
+        <!-- Buurt-header -->
+        <div class="px-4 py-3 bg-baarn-900 text-white flex-shrink-0">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <h2 id="buurt-naam" class="font-bold text-base leading-tight"></h2>
+              <p id="buurt-meta" class="text-baarn-100 text-xs mt-0.5"></p>
+            </div>
+            <button id="sluit-buurt-btn" title="Sluit buurtpaneel"
+              class="text-baarn-100 hover:text-white flex-shrink-0 mt-0.5">
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Scrollbaar deel -->
+        <div class="flex-1 overflow-y-auto">
+
+          <!-- Indicatoren-kaartjes -->
+          <div class="p-4">
+            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+              Kerncijfers <span id="kaartjes-jaar" class="normal-case font-normal"></span>
+            </h3>
+            <div id="indicator-kaartjes" class="grid grid-cols-2 gap-2"></div>
+          </div>
+
+          <!-- Grafiek -->
+          <div class="px-4 pb-2">
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Trend</h3>
+              <span id="grafiek-indicator-label" class="text-xs text-baarn-800 font-medium"></span>
+            </div>
+            <div class="bg-slate-50 rounded-lg p-3" style="height:200px;">
+              <canvas id="trend-grafiek"></canvas>
+            </div>
+            <p class="text-xs text-slate-400 mt-1.5 text-center">
+              Gestippeld = gemeentegemiddelde Baarn
+            </p>
+          </div>
+
+          <!-- Vergelijkingsknop -->
+          <div class="px-4 py-3 border-t border-slate-100">
+            <button id="vergelijk-knop"
+              class="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg
+                     border border-baarn-800 text-baarn-800 text-sm font-medium
+                     hover:bg-baarn-100 transition-colors">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+              </svg>
+              <span id="vergelijk-knop-tekst">Vergelijk met andere buurt</span>
+            </button>
+          </div>
+
+          <!-- Vergelijkingspaneel -->
+          <div id="vergelijking-paneel" class="hidden px-4 pb-4">
+            <label class="text-xs font-medium text-slate-500 block mb-1.5">Vergelijk met:</label>
+            <select id="vergelijking-select"
+              class="w-full border border-slate-300 rounded-md px-3 py-2 text-sm
+                     focus:outline-none focus:ring-2 focus:ring-baarn-800">
+              <option value="">— kies een buurt —</option>
+            </select>
+
+            <!-- Vergelijking stats tabel -->
+            <div id="vergelijking-tabel" class="hidden mt-3">
+              <table class="w-full text-xs">
+                <thead>
+                  <tr class="text-slate-400">
+                    <th class="text-left py-1 font-medium">Indicator</th>
+                    <th id="vgl-col-a" class="text-right py-1 font-medium pr-1 truncate max-w-16"></th>
+                    <th id="vgl-col-b" class="text-right py-1 font-medium truncate max-w-16"></th>
+                  </tr>
+                </thead>
+                <tbody id="vergelijking-rijen" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Bronvermelding -->
+          <div class="px-4 py-3 border-t border-slate-100">
+            <p class="text-xs text-slate-400">
+              Bron: CBS StatLine — Kerncijfers wijken en buurten.
+              Waarden gebaseerd op jaarlijkse publicaties.
+            </p>
+          </div>
+
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- === KAART-GEBIED === -->
+    <div class="flex-1 relative overflow-hidden">
+      <div id="kaart" class="w-full h-full"></div>
+
+      <!-- Legenda overlay -->
+      <div id="legenda"
+        class="absolute bottom-8 right-4 bg-white rounded-xl shadow-lg px-4 py-3 z-[1000]
+               text-xs min-w-[160px]">
+        <p id="legenda-titel" class="font-semibold text-slate-700 mb-2 text-center"></p>
+        <div id="legenda-items" class="space-y-1"></div>
+        <p class="text-slate-400 mt-2 text-center">Klik op kaart voor details</p>
+      </div>
     </div>
 
-    <section class="container">
-      <div class="map-card">
-        <div id="map" class="map"></div>
-      </div>
-    </section>
   </main>
 
-  <footer class="footer">
-    <div class="container">
-      <p>© 2025 Mark Eijbaard — Data uit GitHub / OSM</p>
-    </div>
-  </footer>
-
-  <!-- Leaflet JS -->
+  <!-- ===== SCRIPTS ===== -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-  <!-- Jouw script (verwacht #map en #loading-indicator) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="./assets/js/localdashboard.js" defer></script>
 </body>
 </html>

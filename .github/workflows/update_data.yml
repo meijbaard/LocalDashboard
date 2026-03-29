@@ -1,0 +1,37 @@
+name: CBS Data bijwerken
+
+on:
+  # Draait op de 1e van elke maand om 06:00 UTC
+  schedule:
+    - cron: "0 6 1 * *"
+  # Handmatig starten via de GitHub UI of API
+  workflow_dispatch:
+
+jobs:
+  update-data:
+    name: CBS kerncijfers ophalen en opslaan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # nodig om de gegenereerde JSON te committen
+
+    steps:
+      - name: Repository ophalen
+        uses: actions/checkout@v4
+
+      - name: Python instellen
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Afhankelijkheden installeren
+        run: pip install requests
+
+      - name: ETL-script uitvoeren
+        run: python scripts/fetch_cbs_data.py
+
+      - name: Wijzigingen committen (alleen als er iets veranderd is)
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "data: CBS kerncijfers automatisch bijgewerkt"
+          file_pattern: "data/*.json"
+          commit_author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
