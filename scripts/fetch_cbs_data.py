@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """
-ETL: CBS Kerncijfers wijken en buurten → data/baarn_social_data.json
+ETL: CBS Kerncijfers wijken en buurten → data/<gemeente>_social_data.json
 
-Haalt sociale indicatoren op voor alle buurten in Baarn (GM0308) via de
-CBS OData v3 API. Elk publicatiejaar is een aparte CBS-tabel.
+Haalt sociale indicatoren op voor alle buurten van de gemeenten in
+scripts/gemeenten.py via de CBS OData v3 API. Elk publicatiejaar is een
+aparte CBS-tabel; per tabel wordt één query gedaan voor alle gemeenten
+samen. Daarnaast wordt data/gemeenten.json geschreven: het overzicht dat
+de frontend gebruikt om de gemeentekeuze te vullen.
 
 Gebruik:
     python scripts/fetch_cbs_data.py
@@ -20,6 +23,15 @@ from pathlib import Path
 
 import requests
 
+from gemeenten import (
+    GEMEENTEN,
+    REPO_ROOT,
+    STANDAARD_SLUG,
+    buurt_prefix,
+    data_pad,
+    geojson_pad,
+)
+
 # ---------------------------------------------------------------------------
 # Configuratie
 # ---------------------------------------------------------------------------
@@ -27,14 +39,12 @@ import requests
 ODATA_CATALOG = "https://opendata.cbs.nl/ODataCatalog/Tables"
 ODATA_BASE    = "https://opendata.cbs.nl/ODataApi/odata"
 
-GEMEENTE_CODE = "GM0308"
-BUURT_PREFIX  = "BU0308"
 MAX_JAREN     = 10   # ophalen van maximaal de laatste N jaarlijkse tabellen
 
 # CBS geeft -99995 / -99997 / -99999 terug voor ontbrekende / onderdrukte data
 CBS_GEEN_DATA = {-99995, -99997, -99999}
 
-OUTPUT_PATH = Path(__file__).parent.parent / "data" / "baarn_social_data.json"
+MANIFEST_PATH = REPO_ROOT / "data" / "gemeenten.json"
 
 # ---------------------------------------------------------------------------
 # Indicator-definitie
@@ -103,8 +113,10 @@ INDICATOREN = {
         "titel_zoek": "basisonderwijs, vmbo, mbo1",
         "label": "% Laag opgeleid",
         "beschrijving": (
-            "Percentage inwoners met basisonderwijs, vmbo of mbo1 als "
-            "hoogst behaald diploma."
+            "Aandeel van de inwoners van 15 tot 75 jaar met basisonderwijs, "
+            "vmbo of mbo1 als hoogst behaald onderwijsniveau. Berekend als "
+            "aandeel van de drie onderwijsniveaus samen — CBS publiceert per "
+            "buurt alleen aantallen personen."
         ),
         "eenheid": "%",
         "categorie": "onderwijs",
@@ -114,8 +126,10 @@ INDICATOREN = {
         "titel_zoek": "havo, vwo, mbo2-4",
         "label": "% Middelbaar opgeleid",
         "beschrijving": (
-            "Percentage inwoners met havo, vwo of mbo2–4 als "
-            "hoogst behaald diploma."
+            "Aandeel van de inwoners van 15 tot 75 jaar met havo, vwo of "
+            "mbo2–4 als hoogst behaald onderwijsniveau. Berekend als aandeel "
+            "van de drie onderwijsniveaus samen — CBS publiceert per buurt "
+            "alleen aantallen personen."
         ),
         "eenheid": "%",
         "categorie": "onderwijs",
@@ -125,7 +139,10 @@ INDICATOREN = {
         "titel_zoek": "hbo, wo",
         "label": "% Hoog opgeleid",
         "beschrijving": (
-            "Percentage inwoners met hbo of wo als hoogst behaald diploma."
+            "Aandeel van de inwoners van 15 tot 75 jaar met hbo of wo als "
+            "hoogst behaald onderwijsniveau. Berekend als aandeel van de drie "
+            "onderwijsniveaus samen — CBS publiceert per buurt alleen "
+            "aantallen personen."
         ),
         "eenheid": "%",
         "categorie": "onderwijs",
@@ -151,6 +168,12 @@ INDICATOREN = {
         "hoog_is_slecht": False,
     },
 }
+
+# CBS geeft het hoogst behaalde onderwijsniveau per buurt als aantallen
+# personen (15 tot 75 jaar), niet als percentage. Aantallen zijn tussen buurten
+# van verschillende grootte niet te vergelijken, dus rekenen we ze om naar een
+# aandeel van de drie niveaus samen.
+OPLEIDINGSNIVEAUS = ("opleiding_laag", "opleiding_middelbaar", "opleiding_hoog")
 
 # ---------------------------------------------------------------------------
 # HTTP-hulpfuncties
@@ -270,14 +293,14 @@ def los_kolommen_op(tabel_id: str) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Data ophalen per tabel
+# Data ophalen per tabel (alle gemeenten in één query)
 # ---------------------------------------------------------------------------
 
-def haal_buurtdata(tabel_id: str, jaar: int) -> tuple[list[dict], dict[str, str]]:
+def haal_regiodata(tabel_id: str) -> tuple[list[dict], dict[str, str]]:
     """
-    Haal buurt- en gemeenterijen op uit één CBS-tabel.
-    Geeft (rijen, kolom_mapping) terug waarbij kolom_mapping de vertaling is van
-    indicator_key → CBS-kolomnaam voor *deze* tabel.
+    Haal buurt- en gemeenterijen van álle geconfigureerde gemeenten op uit
+    één CBS-tabel. Geeft (rijen, kolom_mapping) terug waarbij kolom_mapping de
+    vertaling is van indicator_key → CBS-kolomnaam voor *deze* tabel.
     """
     kolom_mapping = los_kolommen_op(tabel_id)
     if not kolom_mapping:
@@ -286,18 +309,21 @@ def haal_buurtdata(tabel_id: str, jaar: int) -> tuple[list[dict], dict[str, str]
 
     cbs_kolommen = list(kolom_mapping.values())
     select = "WijkenEnBuurten," + ",".join(cbs_kolommen)
-    filter_ = (
-        f"startswith(WijkenEnBuurten,'{BUURT_PREFIX}') or "
-        f"startswith(WijkenEnBuurten,'{GEMEENTE_CODE}')"
-    )
-    # Baarn heeft ≤ 25 rijen per tabel — geen paginering nodig.
+
+    voorwaarden = []
+    for gemeente in GEMEENTEN:
+        voorwaarden.append(f"startswith(WijkenEnBuurten,'{buurt_prefix(gemeente)}')")
+        voorwaarden.append(f"startswith(WijkenEnBuurten,'{gemeente['code']}')")
+    filter_ = " or ".join(voorwaarden)
+
+    # Enkele tientallen rijen per tabel — geen paginering nodig.
     # CBS ODataApi ondersteunt $skip niet; ODataFeed is nodig voor grotere datasets.
     url = f"{ODATA_BASE}/{tabel_id}/TypedDataSet"
     params = {
         "$filter": filter_,
         "$select": select,
         "$format": "json",
-        "$top": "200",
+        "$top": "500",
     }
     alle_rijen = []
     try:
@@ -314,71 +340,110 @@ def haal_buurtdata(tabel_id: str, jaar: int) -> tuple[list[dict], dict[str, str]
 # Samenstellen van de datastructuur
 # ---------------------------------------------------------------------------
 
-def verwerk_data(tabellen: list[dict]) -> dict:
-    """Combineer data van alle tabellen tot de uiteindelijke JSON-structuur."""
-    buurten: dict[str, dict] = {}
-    gemeente: dict[str, dict[str, float | None]] = {k: {} for k in INDICATOREN}
-    alle_jaren: set[int] = set()
+def lege_verzameling() -> dict:
+    return {
+        "buurten": {},
+        "gemeente_tijdreeksen": {k: {} for k in INDICATOREN},
+        "alle_jaren": set(),
+    }
+
+
+def verwerk_data(tabellen: list[dict]) -> dict[str, dict]:
+    """
+    Combineer data van alle tabellen tot één datastructuur per gemeente.
+    Geeft terug: { gemeente_slug → {buurten, gemeente_tijdreeksen, alle_jaren} }
+    """
+    resultaten = {g["slug"]: lege_verzameling() for g in GEMEENTEN}
 
     for tabel in tabellen:
         tabel_id = tabel["identifier"]
         jaar = tabel["jaar"]
         print(f"\nTabel {tabel_id} ({jaar})...")
 
-        rijen, kolom_mapping = haal_buurtdata(tabel_id, jaar)
+        rijen, kolom_mapping = haal_regiodata(tabel_id)
         if not rijen:
             continue
 
         for rij in rijen:
             code = schoon_code(rij.get("WijkenEnBuurten", ""))
 
-            # Gemeentedata (benchmark)
-            if code.startswith(GEMEENTE_CODE):
+            for gemeente in GEMEENTEN:
+                verzameling = resultaten[gemeente["slug"]]
+
+                # Gemeentedata (benchmark)
+                if code.startswith(gemeente["code"]):
+                    for ind_key, cbs_col in kolom_mapping.items():
+                        if cbs_col in rij:
+                            verzameling["gemeente_tijdreeksen"][ind_key][str(jaar)] = \
+                                schoon_waarde(rij[cbs_col])
+                    verzameling["alle_jaren"].add(jaar)
+                    break
+
+                # Buurtdata
+                if not code.startswith(buurt_prefix(gemeente)):
+                    continue
+
+                buurten = verzameling["buurten"]
+                if code not in buurten:
+                    buurten[code] = {
+                        "naam": code,   # wordt overschreven door GeoJSON
+                        "wijkcode": "",
+                        "tijdreeksen": {k: {} for k in INDICATOREN},
+                    }
+
                 for ind_key, cbs_col in kolom_mapping.items():
                     if cbs_col in rij:
-                        gemeente[ind_key][str(jaar)] = schoon_waarde(rij[cbs_col])
-                alle_jaren.add(jaar)
-                continue
+                        buurten[code]["tijdreeksen"][ind_key][str(jaar)] = \
+                            schoon_waarde(rij[cbs_col])
 
-            # Buurtdata
-            if not code.startswith(BUURT_PREFIX):
-                continue
+                verzameling["alle_jaren"].add(jaar)
+                break
 
-            if code not in buurten:
-                buurten[code] = {
-                    "naam": code,   # wordt overschreven door GeoJSON
-                    "wijkcode": "",
-                    "tijdreeksen": {k: {} for k in INDICATOREN},
-                }
-
-            for ind_key, cbs_col in kolom_mapping.items():
-                if cbs_col in rij:
-                    buurten[code]["tijdreeksen"][ind_key][str(jaar)] = \
-                        schoon_waarde(rij[cbs_col])
-
-            alle_jaren.add(jaar)
-
-    return {
-        "buurten": buurten,
-        "gemeente_tijdreeksen": gemeente,
-        "alle_jaren": sorted(alle_jaren),
-    }
+    return resultaten
 
 
-def verrijk_met_geojson(resultaat: dict) -> None:
+def zet_opleiding_om_naar_aandelen(tijdreeksen: dict) -> None:
+    """Reken de drie opleidingsniveaus per jaar om van aantallen naar procenten."""
+    jaren: set[str] = set()
+    for key in OPLEIDINGSNIVEAUS:
+        jaren.update(tijdreeksen[key])
+
+    for jaar in jaren:
+        waarden = [tijdreeksen[key].get(jaar) for key in OPLEIDINGSNIVEAUS]
+
+        # Alleen omrekenen als alle drie de niveaus bekend zijn: ontbreekt er
+        # één, dan klopt de noemer niet en zou het aandeel te hoog uitvallen.
+        if None in waarden or sum(waarden) <= 0:
+            for key in OPLEIDINGSNIVEAUS:
+                if jaar in tijdreeksen[key]:
+                    tijdreeksen[key][jaar] = None
+            continue
+
+        totaal = sum(waarden)
+        for key, waarde in zip(OPLEIDINGSNIVEAUS, waarden):
+            tijdreeksen[key][jaar] = round(waarde / totaal * 100, 1)
+
+
+def verrijk_met_geojson(gemeente: dict, verzameling: dict) -> None:
     """Voeg buurtnamen en wijkcodes toe vanuit het lokale GeoJSON-bestand."""
-    geojson_pad = Path(__file__).parent.parent / "baarn_buurten.geojson"
-    if not geojson_pad.exists():
-        print("[waarschuwing] baarn_buurten.geojson niet gevonden")
+    pad = geojson_pad(gemeente)
+    if not pad.exists():
+        print(f"  [waarschuwing] {pad.name} niet gevonden — "
+              f"draai eerst scripts/fetch_geojson.py")
         return
 
-    with open(geojson_pad, encoding="utf-8") as f:
+    with open(pad, encoding="utf-8") as f:
         geojson = json.load(f)
 
-    buurten = resultaat["buurten"]
+    buurten = verzameling["buurten"]
+    codes_met_geometrie = set()
+
     for feature in geojson.get("features", []):
         props = feature.get("properties", {})
         code = props.get("buurtcode", "").strip()
+        if not code:
+            continue
+        codes_met_geometrie.add(code)
         naam = props.get("buurtnaam", code)
         wijkcode = props.get("wijkcode", "")
 
@@ -393,35 +458,27 @@ def verrijk_met_geojson(resultaat: dict) -> None:
                 "tijdreeksen": {k: {} for k in INDICATOREN},
             }
 
+    # Opgeheven buurten: wel CBS-data uit oudere jaren, maar geen vlak op de
+    # huidige buurtkaart. Die laten we weg — anders staan ze wel in het
+    # zijpaneel en de vergelijking, maar zijn ze niet aanklikbaar op de kaart.
+    verdwenen = sorted(set(buurten) - codes_met_geometrie)
+    for code in verdwenen:
+        del buurten[code]
+    if verdwenen:
+        print(f"  Zonder vlak op de buurtkaart, weggelaten: {', '.join(verdwenen)}")
+
     print(f"  GeoJSON: {len(buurten)} buurten verrijkt met namen")
 
 
-# ---------------------------------------------------------------------------
-# Hoofd-entry
-# ---------------------------------------------------------------------------
-
-def main() -> None:
-    print("=" * 60)
-    print("Sociaal Dashboard Baarn — CBS Data ETL")
-    print(f"Gestart: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
-    print("=" * 60)
-
-    tabellen = haal_beschikbare_tabellen()
-    if not tabellen:
-        print("[fout] Geen CBS-tabellen gevonden. Afgebroken.")
-        sys.exit(1)
-
-    resultaat = verwerk_data(tabellen)
-    print("\nGeoJSON-verrijking...")
-    verrijk_met_geojson(resultaat)
-
-    output = {
+def bouw_uitvoer(gemeente: dict, verzameling: dict) -> dict:
+    """Zet de verzamelde data om naar de JSON-structuur die de frontend leest."""
+    return {
         "metadata": {
             "gegenereerd_op": datetime.now(timezone.utc).isoformat(),
             "bron": "CBS StatLine — Kerncijfers wijken en buurten",
-            "gemeente": "Baarn",
-            "gemeente_code": GEMEENTE_CODE,
-            "jaren": resultaat["alle_jaren"],
+            "gemeente": gemeente["naam"],
+            "gemeente_code": gemeente["code"],
+            "jaren": sorted(verzameling["alle_jaren"]),
             "indicatoren": {
                 k: {
                     "label": v["label"],
@@ -434,23 +491,75 @@ def main() -> None:
             },
         },
         "gemeente": {
-            "naam": "Baarn",
-            "code": GEMEENTE_CODE,
-            "tijdreeksen": resultaat["gemeente_tijdreeksen"],
+            "naam": gemeente["naam"],
+            "code": gemeente["code"],
+            "tijdreeksen": verzameling["gemeente_tijdreeksen"],
         },
-        "buurten": resultaat["buurten"],
+        "buurten": verzameling["buurten"],
     }
 
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-        json.dump(output, f, ensure_ascii=False, indent=2)
 
-    n_b = len(output["buurten"])
-    n_j = len(output["metadata"]["jaren"])
-    jaren = output["metadata"]["jaren"]
-    print(f"\n✓ Opgeslagen → {OUTPUT_PATH}")
-    print(f"  {n_b} buurten | {n_j} jaar "
-          f"({min(jaren, default='–')}–{max(jaren, default='–')})")
+def schrijf_manifest() -> None:
+    """Schrijf data/gemeenten.json — de gemeentelijst die de frontend inleest."""
+    manifest = {
+        "standaard": STANDAARD_SLUG,
+        "gemeenten": [
+            {
+                "slug": g["slug"],
+                "naam": g["naam"],
+                "code": g["code"],
+                "data": f"./data/{g['slug']}_social_data.json",
+                "geojson": f"./{g['slug']}_buurten.geojson",
+            }
+            for g in GEMEENTEN
+        ],
+    }
+    MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(MANIFEST_PATH, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=2)
+    print(f"✓ Opgeslagen → {MANIFEST_PATH}")
+
+
+# ---------------------------------------------------------------------------
+# Hoofd-entry
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    namen = ", ".join(g["naam"] for g in GEMEENTEN)
+    print("=" * 60)
+    print(f"Lokaal Dashboard — CBS Data ETL ({namen})")
+    print(f"Gestart: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+    print("=" * 60)
+
+    tabellen = haal_beschikbare_tabellen()
+    if not tabellen:
+        print("[fout] Geen CBS-tabellen gevonden. Afgebroken.")
+        sys.exit(1)
+
+    resultaten = verwerk_data(tabellen)
+
+    for gemeente in GEMEENTEN:
+        verzameling = resultaten[gemeente["slug"]]
+        print(f"\nGeoJSON-verrijking {gemeente['naam']}...")
+        verrijk_met_geojson(gemeente, verzameling)
+
+        zet_opleiding_om_naar_aandelen(verzameling["gemeente_tijdreeksen"])
+        for buurt in verzameling["buurten"].values():
+            zet_opleiding_om_naar_aandelen(buurt["tijdreeksen"])
+
+        uitvoer = bouw_uitvoer(gemeente, verzameling)
+        pad = data_pad(gemeente)
+        pad.parent.mkdir(parents=True, exist_ok=True)
+        with open(pad, "w", encoding="utf-8") as f:
+            json.dump(uitvoer, f, ensure_ascii=False, indent=2)
+
+        jaren = uitvoer["metadata"]["jaren"]
+        print(f"✓ Opgeslagen → {pad}")
+        print(f"  {len(uitvoer['buurten'])} buurten | {len(jaren)} jaar "
+              f"({min(jaren, default='–')}–{max(jaren, default='–')})")
+
+    print()
+    schrijf_manifest()
     print("=" * 60)
 
 

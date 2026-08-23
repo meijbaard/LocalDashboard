@@ -1,3 +1,7 @@
 .venv/
 
 graphify-out/
+
+__pycache__/
+
+.claude/

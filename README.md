@@ -1,23 +1,45 @@
-# 🗺️ Wijkdata Dashboard Gemeente Baarn
+# 🗺️ Sociaal Dashboard — Baarn en Woudenberg
 
-Dit project is een interactief dashboard dat wijk- en buurtgegevens voor de gemeente Baarn visualiseert op een kaart. Gebruikers kunnen op specifieke wijken klikken om gedetailleerde demografische en statistische informatie te bekijken.
+Dit project is een interactief dashboard dat CBS-buurtgegevens visualiseert op een kaart. Je kiest bovenin een gemeente, een indicator en een jaar, en klikt op een buurt om de kerncijfers, de trend over de jaren en een vergelijking met een andere buurt te zien.
 
 **[Live voorbeeld](https://cbs.markeijbaard.nl)**
 
+Direct naar één gemeente: `?gemeente=baarn` of `?gemeente=woudenberg`.
+
 ## ✨ Kenmerken
 
--   **🗺️ Interactieve Kaart**: Een dynamische kaart van Baarn waarop alle wijken en buurten duidelijk zijn aangegeven.
--   **📊 Data Popups**: Door op een wijk te klikken, verschijnt er een popup met overzichtelijke data over die specifieke locatie.
--   **☁️ Dynamische Data**: De geografische en statistische data wordt live geladen vanuit een extern GeoJSON-bestand.
--   **🗑️ Gefilterde Weergave**: Alleen relevante data wordt getoond. Velden met ongeldige waarden (`-99995` of `-99997`) worden automatisch verborgen.
+-   **🗺️ Interactieve Kaart**: Een dynamische kaart per gemeente waarop alle buurten zijn ingekleurd naar de gekozen indicator.
+-   **🏛️ Meerdere gemeenten**: Baarn en Woudenberg in hetzelfde dashboard, omschakelbaar zonder de pagina te herladen.
+-   **📊 Zijpaneel per buurt**: Kerncijfers naast het gemeentegemiddelde, een tijdreeks vanaf 2016 en een vergelijking met een tweede buurt.
+-   **☁️ Automatische data**: Een maandelijkse GitHub Action haalt de CBS-cijfers opnieuw op.
+-   **🗑️ Gefilterde Weergave**: CBS-codes voor ontbrekende of onderdrukte data (`-99995`, `-99997`, `-99999`) worden weggelaten in plaats van als getal getoond.
 -   **📱 Responsive Design**: De webpagina is geoptimaliseerd voor weergave op zowel desktops als mobiele apparaten.
 
-## 💾 Data Bron
+## 💾 Data Bronnen
 
-De data voor dit dashboard wordt geladen vanuit het volgende GeoJSON-bestand:
--   **URL**: [`baarn_buurten.geojson`](https://raw.githubusercontent.com/meijbaard/LocalDashboard/main/baarn_buurten.geojson)
+| Wat | Bron | Bestand |
+|---|---|---|
+| Sociale indicatoren per buurt | CBS StatLine, *Kerncijfers wijken en buurten* (OData) | `data/<gemeente>_social_data.json` |
+| Buurtgrenzen | PDOK, *CBS Wijken en Buurten* (WFS) | `<gemeente>_buurten.geojson` |
+| Welke gemeenten het dashboard toont | gegenereerd uit `scripts/gemeenten.py` | `data/gemeenten.json` |
 
-Dit bestand bevat zowel de geometrische data (de grenzen van de wijken) als de eigenschappen (de statistische gegevens) per wijk.
+Beide databestanden worden gegenereerd; pas ze niet met de hand aan.
+
+## 🔄 Data verversen
+
+```bash
+pip install requests
+python scripts/fetch_geojson.py     # buurtgrenzen (alleen wat nog ontbreekt)
+python scripts/fetch_cbs_data.py    # CBS-cijfers + data/gemeenten.json
+```
+
+`fetch_geojson.py` slaat bestaande bestanden over; met `--force` of een expliciete gemeente (`python scripts/fetch_geojson.py woudenberg`) worden ze opnieuw opgehaald.
+
+## ➕ Een gemeente toevoegen
+
+Zet er een regel bij in `GEMEENTEN` in [`scripts/gemeenten.py`](scripts/gemeenten.py) — slug, naam en CBS-gemeentecode — en draai daarna beide scripts hierboven. De frontend leest de gemeentelijst uit `data/gemeenten.json` en heeft verder geen aanpassing nodig.
+
+> Buurten die wel CBS-data hebben maar geen vlak meer op de actuele buurtkaart (opgeheven of samengevoegd), laat de ETL weg: anders staan ze wel in het zijpaneel maar zijn ze niet aanklikbaar op de kaart. Het script meldt welke dat zijn.
 
 ## 🛠️ Gebruikte Technologieën
 
@@ -58,7 +80,16 @@ LocalDashboard/
 │  │  └─ localdashboard.css
 │  └─ js/
 │     └─ localdashboard.js
-└─ (data wordt live opgehaald vanaf GitHub)
+├─ scripts/
+│  ├─ gemeenten.py          # welke gemeenten het dashboard toont
+│  ├─ fetch_geojson.py      # buurtgrenzen via PDOK
+│  └─ fetch_cbs_data.py     # CBS-kerncijfers via OData
+├─ data/
+│  ├─ gemeenten.json
+│  ├─ baarn_social_data.json
+│  └─ woudenberg_social_data.json
+├─ baarn_buurten.geojson
+└─ woudenberg_buurten.geojson
 ```
 
 ---

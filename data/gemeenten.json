@@ -1,0 +1,19 @@
+{
+  "standaard": "baarn",
+  "gemeenten": [
+    {
+      "slug": "baarn",
+      "naam": "Baarn",
+      "code": "GM0308",
+      "data": "./data/baarn_social_data.json",
+      "geojson": "./baarn_buurten.geojson"
+    },
+    {
+      "slug": "woudenberg",
+      "naam": "Woudenberg",
+      "code": "GM0351",
+      "data": "./data/woudenberg_social_data.json",
+      "geojson": "./woudenberg_buurten.geojson"
+    }
+  ]
+}

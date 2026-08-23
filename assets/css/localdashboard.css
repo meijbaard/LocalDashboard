@@ -1,9 +1,9 @@
-/* Sociaal Dashboard Baarn — aanvullende stijlen naast Tailwind CSS */
+/* Sociaal Dashboard — aanvullende stijlen naast Tailwind CSS */
 
 /* ---- Basis ---- */
 :root {
-  --baarn-blue: #004a8f;
-  --baarn-goud: #fec400;
+  --gem-blauw: #004a8f;
+  --gem-goud: #fec400;
 }
 
 html, body {
@@ -18,12 +18,12 @@ html, body {
 }
 
 .leaflet-control-zoom a {
-  color: var(--baarn-blue) !important;
+  color: var(--gem-blauw) !important;
   font-weight: 600;
 }
 
 .leaflet-control-zoom a:hover {
-  background: var(--baarn-goud) !important;
+  background: var(--gem-goud) !important;
   color: #fff !important;
 }
 
@@ -66,3 +66,33 @@ html, body {
   to   { transform: rotate(360deg); }
 }
 .animate-spin { animation: spin 1s linear infinite; }
+
+/* ---- Mobiel: zijpaneel als onderblad over de kaart ---- */
+@media (max-width: 767px) {
+  #zijpaneel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    height: 68%;
+    z-index: 1100;
+    border-right: 0;
+    border-top: 1px solid #e2e8f0;
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -8px 24px rgb(15 23 42 / 18%);
+  }
+
+  /* Zonder buurtselectie heeft het onderblad niets te melden; die ruimte is
+     op een telefoon beter besteed aan de kaart zelf. */
+  #zijpaneel:has(#welkomst-staat:not(.hidden)) {
+    display: none;
+  }
+
+  /* De legenda zou anders achter het onderblad verdwijnen. */
+  #legenda {
+    bottom: auto;
+    top: 0.5rem;
+    right: 0.5rem;
+  }
+}

@@ -1,16 +1,17 @@
 "use strict";
 
 // =============================================================================
-// SOCIAAL DASHBOARD BAARN
+// LOKAAL SOCIAAL DASHBOARD
 // Vanilla JS SPA — Leaflet kaart + Chart.js tijdreeksen + vergelijkingsmodus
+// Toont CBS-buurtcijfers van meerdere gemeenten; welke, staat in
+// data/gemeenten.json (gegenereerd door scripts/fetch_cbs_data.py).
 // =============================================================================
 
 // ---------------------------------------------------------------------------
 // 1. CONSTANTEN & URLS
 // ---------------------------------------------------------------------------
 
-const DATA_URL    = "./data/baarn_social_data.json";
-const GEOJSON_URL = "https://raw.githubusercontent.com/meijbaard/LocalDashboard/main/baarn_buurten.geojson";
+const MANIFEST_URL = "./data/gemeenten.json";
 
 // CBS-kleuren voor de choropleth (van licht → donker)
 const KLEUR_SLECHT = ["#ffffb2", "#fed976", "#feb24c", "#fd8d3c", "#f03b20", "#bd0026"];
@@ -32,7 +33,9 @@ const CATEGORIE_LABELS = {
 // ---------------------------------------------------------------------------
 
 const state = {
-  data:                null,   // geladen baarn_social_data.json
+  manifest:            null,   // geladen data/gemeenten.json
+  gemeente:            null,   // actieve gemeente uit het manifest
+  data:                null,   // geladen <gemeente>_social_data.json
   geojson:             null,   // geladen GeoJSON
   indicator:           "huishoudens_laag_inkomen",
   jaar:                null,   // string, bijv. "2023"
@@ -49,6 +52,9 @@ const el = {
   laadOverlay:         () => document.getElementById("laad-overlay"),
   foutMelding:         () => document.getElementById("fout-melding"),
   foutTekst:           () => document.getElementById("fout-tekst"),
+  paginaTitel:         () => document.getElementById("pagina-titel"),
+  gemeenteSelect:      () => document.getElementById("gemeente-select"),
+  gemeenteKiezer:      () => document.getElementById("gemeente-kiezer"),
   indicatorSelect:     () => document.getElementById("indicator-select"),
   jaarSelect:          () => document.getElementById("jaar-select"),
   dataJaarLabel:       () => document.getElementById("data-jaar-label"),
@@ -60,6 +66,7 @@ const el = {
   kaartjesJaar:        () => document.getElementById("kaartjes-jaar"),
   indicatorKaartjes:   () => document.getElementById("indicator-kaartjes"),
   grafiekIndicatorLbl: () => document.getElementById("grafiek-indicator-label"),
+  grafiekVoetnoot:     () => document.getElementById("grafiek-voetnoot"),
   trendGrafiek:        () => document.getElementById("trend-grafiek"),
   vergelijkKnop:       () => document.getElementById("vergelijk-knop"),
   vergelijkKnopTekst:  () => document.getElementById("vergelijk-knop-tekst"),
@@ -99,13 +106,8 @@ function getIndicatorDef(indicator) {
   return state.data?.metadata?.indicatoren?.[indicator] ?? null;
 }
 
-function getActieveJaren(buurtCode, indicator) {
-  const buurt = state.data?.buurten?.[buurtCode];
-  if (!buurt) return [];
-  const tijdreeks = buurt.tijdreeksen?.[indicator] ?? {};
-  return Object.keys(tijdreeks)
-    .filter(j => tijdreeks[j] !== null)
-    .sort();
+function getGemeenteNaam() {
+  return state.data?.gemeente?.naam ?? state.gemeente?.naam ?? "";
 }
 
 function alleWaardenVoorIndicator(indicator, jaar) {
@@ -113,6 +115,20 @@ function alleWaardenVoorIndicator(indicator, jaar) {
   return Object.values(state.data.buurten)
     .map(b => b.tijdreeksen?.[indicator]?.[jaar])
     .filter(v => v !== null && v !== undefined);
+}
+
+/** Nieuwste jaar waarin minstens één buurt een waarde heeft, of null. */
+function nieuwsteJaarMetData(indicator) {
+  const jaren = [...(state.data?.metadata?.jaren ?? [])].reverse().map(String);
+  return jaren.find(j => alleWaardenVoorIndicator(indicator, j).length > 0) ?? null;
+}
+
+/** Maak tekst veilig voor gebruik in een HTML-attribuut. */
+function veiligAttribuut(tekst) {
+  return String(tekst ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
 }
 
 /** Bereken min/max over alle buurten voor een indicator+jaar, met marge. */
@@ -162,15 +178,42 @@ function formateerWaarde(waarde, eenheid) {
 }
 
 // ---------------------------------------------------------------------------
-// 6. CONTROLS INITIALISEREN
+// 6. CONTROLS
 // ---------------------------------------------------------------------------
 
-function initialiseerControls() {
+/** Vult de gemeente-dropdown; wordt één keer gedaan, na het laden van het manifest. */
+function vulGemeenteKiezer() {
+  const gemeenten = state.manifest.gemeenten ?? [];
+  const selectEl = el.gemeenteSelect();
+
+  // Met één gemeente is een keuzemenu alleen maar ruis.
+  if (gemeenten.length < 2) {
+    el.gemeenteKiezer().classList.add("hidden");
+    return;
+  }
+
+  selectEl.innerHTML = "";
+  for (const gemeente of gemeenten) {
+    const opt = document.createElement("option");
+    opt.value = gemeente.slug;
+    opt.textContent = gemeente.naam;
+    selectEl.appendChild(opt);
+  }
+  selectEl.value = state.gemeente.slug;
+
+  selectEl.addEventListener("change", () => {
+    wisselGemeente(selectEl.value);
+  });
+}
+
+/** (Her)vult indicator-, jaar- en vergelijkingsdropdown voor de actieve gemeente. */
+function vulControls() {
   const meta = state.data.metadata;
   const indicatorEl = el.indicatorSelect();
   const jaarEl = el.jaarSelect();
 
   // Groepeer indicatoren per categorie
+  indicatorEl.innerHTML = "";
   const groepen = {};
   for (const [key, def] of Object.entries(meta.indicatoren)) {
     const groep = CATEGORIE_LABELS[def.categorie] ?? def.categorie;
@@ -185,13 +228,19 @@ function initialiseerControls() {
       const opt = document.createElement("option");
       opt.value = key;
       opt.textContent = def.label;
-      if (key === state.indicator) opt.selected = true;
       optgroup.appendChild(opt);
     }
     indicatorEl.appendChild(optgroup);
   }
 
+  // Val terug op de eerste indicator als de gekozene hier niet bestaat
+  if (!meta.indicatoren[state.indicator]) {
+    state.indicator = Object.keys(meta.indicatoren)[0];
+  }
+  indicatorEl.value = state.indicator;
+
   // Jaar-dropdown (nieuwste eerst)
+  jaarEl.innerHTML = "";
   const jaren = [...meta.jaren].reverse();
   for (const jaar of jaren) {
     const opt = document.createElement("option");
@@ -200,14 +249,17 @@ function initialiseerControls() {
     jaarEl.appendChild(opt);
   }
 
-  // Stel standaard jaar in: meest recente jaar met data voor standaard indicator
-  state.jaar = String(jaren[0]);
+  // Standaard het nieuwste jaar met data voor de gekozen indicator. Zonder
+  // die check opent het dashboard op een volledig grijze kaart zodra de
+  // nieuwste CBS-tabel die indicator nog niet bevat.
+  state.jaar = nieuwsteJaarMetData(state.indicator) ?? String(jaren[0]);
   jaarEl.value = state.jaar;
 
   el.dataJaarLabel().textContent = `meest recente data: ${jaren[0]}`;
 
   // Vergelijking-dropdown populeren
   const vglSelect = el.vergelijkingSelect();
+  vglSelect.innerHTML = '<option value="">— kies een buurt —</option>';
   const gesorteerd = Object.entries(state.data.buurten)
     .filter(([, b]) => b.naam)
     .sort(([, a], [, b]) => a.naam.localeCompare(b.naam, "nl"));
@@ -218,20 +270,23 @@ function initialiseerControls() {
     opt.textContent = buurt.naam;
     vglSelect.appendChild(opt);
   }
+}
 
-  // Events
-  indicatorEl.addEventListener("change", () => {
-    state.indicator = indicatorEl.value;
+/** Koppelt de vaste event-handlers; wordt één keer gedaan bij het opstarten. */
+function koppelControlEvents() {
+  el.indicatorSelect().addEventListener("change", () => {
+    state.indicator = el.indicatorSelect().value;
     updateChoropleth();
     updateLegenda();
     if (state.geselecteerdeBuurt) {
+      updateIndicatorKaartjes();
       updateGrafiek();
       updateVergelijkingTabel();
     }
   });
 
-  jaarEl.addEventListener("change", () => {
-    state.jaar = jaarEl.value;
+  el.jaarSelect().addEventListener("change", () => {
+    state.jaar = el.jaarSelect().value;
     updateChoropleth();
     updateLegenda();
     if (state.geselecteerdeBuurt) {
@@ -241,17 +296,66 @@ function initialiseerControls() {
   });
 }
 
+/** Zet de gemeentenaam in de titel, de koptekst en de grafiekvoetnoot. */
+function updateGemeenteLabels() {
+  const naam = getGemeenteNaam();
+  document.title = `Sociaal Dashboard ${naam}`;
+  el.paginaTitel().textContent = `Sociaal Dashboard ${naam}`;
+  el.grafiekVoetnoot().textContent = `Gestippeld = gemeentegemiddelde ${naam}`;
+}
+
 // ---------------------------------------------------------------------------
 // 7. LEAFLET KAART
 // ---------------------------------------------------------------------------
 
 function initialiseerKaart() {
-  kaart = L.map("kaart", { zoomControl: true }).setView([52.21, 5.29], 13);
+  kaart = L.map("kaart", { zoomControl: true });
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "© <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a>",
   }).addTo(kaart);
+
+  tekenBuurten();
+  herstelZoomZodraDeKaartHoogteHeeft();
+}
+
+/**
+ * Tailwind komt van de CDN en wordt pas toegepast nadat de DOM is opgebouwd.
+ * Tot dat moment heeft de kaartcontainer nauwelijks hoogte en kiest fitBounds
+ * daardoor het maximale zoomniveau. Zodra de container zijn echte hoogte
+ * krijgt, zoomen we eenmalig opnieuw in — daarna blijft de weergave van de
+ * gebruiker met rust.
+ */
+function herstelZoomZodraDeKaartHoogteHeeft() {
+  const container = document.getElementById("kaart");
+  if (container.clientHeight > 50) return;
+
+  const observer = new ResizeObserver(() => {
+    if (container.clientHeight <= 50) return;
+    observer.disconnect();
+    zoomOpBuurten();
+  });
+  observer.observe(container);
+}
+
+/** Zoomt de kaart precies op de buurten van de actieve gemeente. */
+function zoomOpBuurten() {
+  if (!geojsonLaag) return;
+  kaart.invalidateSize();
+  // Eerst een geldige weergave zetten: zonder beginzoom berekent Leaflet het
+  // zoomniveau van fitBounds verkeerd.
+  const grenzen = geojsonLaag.getBounds();
+  kaart.setView(grenzen.getCenter(), 12);
+  kaart.fitBounds(grenzen, { padding: [20, 20] });
+}
+
+/** Vervangt de buurtlaag door die van de actieve gemeente en zoomt erop in. */
+function tekenBuurten() {
+  if (geojsonLaag) {
+    geojsonLaag.remove();
+    geojsonLaag = null;
+  }
 
   geojsonLaag = L.geoJSON(state.geojson, {
     style: feature => stijlFeature(feature),
@@ -264,7 +368,7 @@ function initialiseerKaart() {
     },
   }).addTo(kaart);
 
-  kaart.fitBounds(geojsonLaag.getBounds(), { padding: [20, 20] });
+  zoomOpBuurten();
 }
 
 function stijlFeature(feature) {
@@ -318,6 +422,8 @@ function onKlik(e, buurtCode) {
     updateGrafiek();
     updateVergelijkingTabel();
     state.vergelijkingActief = false;
+    el.vergelijkKnopTekst().textContent = "Vergelijk met andere buurt";
+    el.vergelijkKnop().classList.remove("bg-gem-100");
     return;
   }
 
@@ -334,6 +440,7 @@ function selecteerBuurt(buurtCode) {
     el.vergelijkingPaneel().classList.add("hidden");
     el.vergelijkingTabel().classList.add("hidden");
     el.vergelijkKnopTekst().textContent = "Vergelijk met andere buurt";
+    el.vergelijkKnop().classList.remove("bg-gem-100");
   }
 
   updateChoropleth();
@@ -355,10 +462,22 @@ function updateLegenda() {
   const def = getIndicatorDef(state.indicator);
   if (!def) return;
 
+  el.legendaTitel().textContent = def.label;
+
+  // Zonder waarden is een kleurschaal misleidend: dan zeggen we gewoon dat er
+  // voor dit jaar niets is, met een verwijzing naar het laatste jaar dat wel
+  // cijfers heeft.
+  if (!alleWaardenVoorIndicator(state.indicator, state.jaar).length) {
+    const laatste = nieuwsteJaarMetData(state.indicator);
+    el.legendaItems().innerHTML = `
+      <p class="text-slate-500">Geen cijfers voor ${state.jaar}.</p>
+      ${laatste ? `<p class="text-slate-400">Laatste jaar met data: ${laatste}.</p>` : ""}
+    `;
+    return;
+  }
+
   const schaal = berekenSchaal(state.indicator, state.jaar);
   const kleurSchaal = def.hoog_is_slecht ? KLEUR_SLECHT : KLEUR_GOED;
-
-  el.legendaTitel().textContent = def.label;
 
   const stappen = 5;
   const items = [];
@@ -411,6 +530,8 @@ function sluitBuurtPaneel() {
   el.welkomstStaat().classList.remove("hidden");
   el.vergelijkingPaneel().classList.add("hidden");
   el.vergelijkingTabel().classList.add("hidden");
+  el.vergelijkKnopTekst().textContent = "Vergelijk met andere buurt";
+  el.vergelijkKnop().classList.remove("bg-gem-100");
 
   updateChoropleth();
 }
@@ -445,7 +566,8 @@ function updateIndicatorKaartjes() {
 
     return `
       <div class="rounded-lg p-2.5 cursor-pointer transition-all border
-                  ${isActief ? "bg-baarn-100 border-baarn-800" : "bg-slate-50 border-transparent hover:border-slate-200"}"
+                  ${isActief ? "bg-gem-100 border-gem-800" : "bg-slate-50 border-transparent hover:border-slate-200"}"
+           title="${veiligAttribuut(def.beschrijving)}"
            onclick="wisselIndicator('${key}')">
         <p class="text-xs text-slate-500 leading-tight">${def.label}</p>
         <p class="font-semibold text-slate-800 text-sm mt-0.5">${formateerWaarde(waarde, def.eenheid)}</p>
@@ -517,7 +639,7 @@ function updateGrafiek() {
       pointBackgroundColor: "#004a8f",
     },
     {
-      label: "Gem. Baarn",
+      label: `Gem. ${getGemeenteNaam()}`,
       data: gemeenteWaarden,
       borderColor: "#94a3b8",
       borderDash: [5, 4],
@@ -582,11 +704,11 @@ function initialiseerVergelijking() {
       // Annuleer
       state.vergelijkingActief = false;
       el.vergelijkKnopTekst().textContent = "Vergelijk met andere buurt";
-      el.vergelijkKnop().classList.remove("bg-baarn-100");
+      el.vergelijkKnop().classList.remove("bg-gem-100");
     } else {
       state.vergelijkingActief = true;
       el.vergelijkKnopTekst().textContent = "Klik op de kaart om te vergelijken…";
-      el.vergelijkKnop().classList.add("bg-baarn-100");
+      el.vergelijkKnop().classList.add("bg-gem-100");
       el.vergelijkingPaneel().classList.remove("hidden");
     }
   });
@@ -596,7 +718,7 @@ function initialiseerVergelijking() {
     state.vergelijkingsBuurt = code || null;
     state.vergelijkingActief = false;
     el.vergelijkKnopTekst().textContent = "Vergelijk met andere buurt";
-    el.vergelijkKnop().classList.remove("bg-baarn-100");
+    el.vergelijkKnop().classList.remove("bg-gem-100");
     updateChoropleth();
     updateGrafiek();
     updateVergelijkingTabel();
@@ -653,23 +775,67 @@ function updateVergelijkingTabel() {
 // 12. DATA LADEN
 // ---------------------------------------------------------------------------
 
-async function laadData() {
+async function haalJson(url, omschrijving) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`${omschrijving} niet gevonden (${resp.status})`);
+  return resp.json();
+}
+
+async function laadManifest() {
+  const manifest = await haalJson(MANIFEST_URL, "Gemeente-overzicht");
+  if (!manifest.gemeenten?.length) {
+    throw new Error("Het gemeente-overzicht bevat geen gemeenten.");
+  }
+  state.manifest = manifest;
+}
+
+/** Bepaal welke gemeente getoond wordt: ?gemeente=… of de standaard. */
+function kiesStartGemeente() {
+  const gevraagd = new URLSearchParams(window.location.search).get("gemeente");
+  const gemeenten = state.manifest.gemeenten;
+  return gemeenten.find(g => g.slug === gevraagd)
+      ?? gemeenten.find(g => g.slug === state.manifest.standaard)
+      ?? gemeenten[0];
+}
+
+/** Laad data en geometrie van één gemeente in de state. */
+async function laadGemeente(gemeente) {
+  const [data, geojson] = await Promise.all([
+    haalJson(gemeente.data, `Sociale data ${gemeente.naam}`),
+    haalJson(gemeente.geojson, `GeoJSON ${gemeente.naam}`),
+  ]);
+  state.gemeente = gemeente;
+  state.data = data;
+  state.geojson = geojson;
+}
+
+/** Wissel naar een andere gemeente en bouw kaart en panelen opnieuw op. */
+async function wisselGemeente(slug) {
+  const gemeente = state.manifest.gemeenten.find(g => g.slug === slug);
+  if (!gemeente || gemeente.slug === state.gemeente?.slug) return;
+
+  el.laadOverlay().classList.remove("hidden");
+
   try {
-    const [dataResp, geojsonResp] = await Promise.all([
-      fetch(DATA_URL),
-      fetch(GEOJSON_URL),
-    ]);
-
-    if (!dataResp.ok) throw new Error(`Sociale data niet gevonden (${dataResp.status})`);
-    if (!geojsonResp.ok) throw new Error(`GeoJSON niet gevonden (${geojsonResp.status})`);
-
-    state.data   = await dataResp.json();
-    state.geojson = await geojsonResp.json();
-
+    await laadGemeente(gemeente);
   } catch (err) {
     toonFout(err.message);
-    throw err;
+    return;
   }
+
+  // Buurtselectie hoort bij de vorige gemeente — die gooien we weg
+  sluitBuurtPaneel();
+
+  vulControls();
+  updateGemeenteLabels();
+  tekenBuurten();
+  updateLegenda();
+
+  const url = new URL(window.location.href);
+  url.searchParams.set("gemeente", gemeente.slug);
+  window.history.replaceState({}, "", url);
+
+  el.laadOverlay().classList.add("hidden");
 }
 
 function toonFout(bericht) {
@@ -687,14 +853,18 @@ async function init() {
   if (!document.getElementById("kaart")) return;
 
   try {
-    await laadData();
-  } catch {
+    await laadManifest();
+    await laadGemeente(kiesStartGemeente());
+  } catch (err) {
+    toonFout(err.message);
     return;
   }
 
-  initialiseerControls();
+  vulGemeenteKiezer();
+  vulControls();
+  koppelControlEvents();
+  updateGemeenteLabels();
   initialiseerKaart();
-  updateChoropleth();
   updateLegenda();
   initialiseerVergelijking();
 
