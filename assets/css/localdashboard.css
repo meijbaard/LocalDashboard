@@ -89,10 +89,29 @@ html, body {
     display: none;
   }
 
-  /* De legenda zou anders achter het onderblad verdwijnen. */
+  /* De legenda zou anders achter het onderblad verdwijnen; boven de kaart
+     is maar een derde van het scherm beschikbaar, dus ook compacter. */
   #legenda {
     bottom: auto;
     top: 0.5rem;
     right: 0.5rem;
+    max-width: 150px;
+    padding: 0.5rem 0.6rem;
+    font-size: 10px;
+    line-height: 1.25;
+  }
+
+  #legenda-items > div {
+    gap: 0.35rem;
+  }
+
+  /* Op een telefoon opent het onderblad vanzelf bij een tik op de kaart;
+     die tiphint kost alleen maar hoogte. */
+  #legenda > p:last-of-type {
+    display: none;
+  }
+
+  #legenda-titel {
+    margin-bottom: 0.35rem;
   }
 }

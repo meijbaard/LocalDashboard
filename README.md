@@ -41,6 +41,10 @@ Zet er een regel bij in `GEMEENTEN` in [`scripts/gemeenten.py`](scripts/gemeente
 
 > Buurten die wel CBS-data hebben maar geen vlak meer op de actuele buurtkaart (opgeheven of samengevoegd), laat de ETL weg: anders staan ze wel in het zijpaneel maar zijn ze niet aanklikbaar op de kaart. Het script meldt welke dat zijn.
 
+## 📐 Eén berekende indicator
+
+CBS publiceert het hoogst behaalde onderwijsniveau per buurt alleen als aantallen personen van 15 tot 75 jaar, niet als percentage. Aantallen zijn tussen buurten van verschillende grootte niet te vergelijken, dus rekent de ETL ze om naar een aandeel van de drie niveaus samen (laag + middelbaar + hoog = 100%). Ontbreekt één van de drie in een jaar, dan blijven alle drie leeg — de noemer zou dan niet kloppen. Alle overige indicatoren komen ongewijzigd uit CBS.
+
 ## 🛠️ Gebruikte Technologieën
 
 -   **HTML5**: Voor de basisstructuur van de webpagina.
